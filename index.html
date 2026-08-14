@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MLA Order Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+  :root{
+    --bg:#F5F4F0;
+    --card:#FFFFFF;
+    --ink:#1C1E21;
+    --ink-soft:#6B7280;
+    --line:#E5E3DC;
+    --navy:#26365C;
+    --navy-deep:#1A2540;
+    --gold:#C99A2E;
+    --gold-soft:#F3E6C4;
+    --s0:#94A3B8;
+    --s1:#C99A2E;
+    --s2:#3B7DD8;
+    --s3:#8B5CF6;
+    --s4:#2F9E58;
+    --issue:#D0453A;
+    --issue-soft:#FBE3E1;
+    --radius:14px;
+    --shadow:0 1px 2px rgba(28,30,33,0.06), 0 4px 16px rgba(28,30,33,0.05);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:20px 16px 80px;}
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand-mark{width:44px;height:44px;border-radius:10px;background:var(--navy);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;color:var(--gold);font-size:20px;letter-spacing:1px;flex-shrink:0;}
+  h1{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:0.5px;margin:0;line-height:1;color:var(--navy-deep);}
+  .subtitle{font-size:13px;color:var(--ink-soft);margin-top:3px;}
+  .sync-row{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--ink-soft);}
+  #syncDot{width:8px;height:8px;border-radius:50%;background:var(--s4);display:inline-block;}
+  #syncDot.busy{background:var(--gold);}
+  #syncDot.error{background:var(--issue);}
+  .btn{border:none;border-radius:10px;padding:10px 16px;font-weight:600;font-size:14px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;transition:transform .08s ease, box-shadow .15s ease;}
+  .btn:active{transform:scale(0.97);}
+  .btn-primary{background:var(--navy);color:#fff;box-shadow:var(--shadow);}
+  .btn-primary:hover{background:var(--navy-deep);}
+  .btn-ghost{background:transparent;color:var(--navy);border:1.5px solid var(--line);}
+  .btn-ghost:hover{border-color:var(--navy);}
+  .btn-sm{padding:7px 11px;font-size:12.5px;border-radius:8px;}
+  .dash{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:20px;}
+  .stage-chip{background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:12px 10px;cursor:pointer;text-align:left;transition:border-color .12s ease, transform .08s ease;}
+  .stage-chip:hover{transform:translateY(-1px);}
+  .stage-chip.active{border-color:var(--navy);box-shadow:var(--shadow);}
+  .stage-chip .count{font-family:'Bebas Neue',sans-serif;font-size:26px;line-height:1;color:var(--ink);}
+  .stage-chip .label{font-size:11.5px;color:var(--ink-soft);margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;}
+  .stage-chip .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-bottom:6px;}
+  .stage-chip.issue{background:var(--issue-soft);border-color:#EFC3BF;}
+  .stage-chip.issue .count{color:var(--issue);}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;}
+  input[type=text],input[type=search],input[type=number],input[type=date],select,textarea{font-family:inherit;font-size:14px;border:1.5px solid var(--line);border-radius:10px;padding:9px 12px;background:#fff;color:var(--ink);outline:none;}
+  input:focus,select:focus,textarea:focus{border-color:var(--navy);}
+  #searchBox{flex:1;min-width:160px;}
+  .toolbar select{min-width:120px;}
+  #orderList{display:flex;flex-direction:column;gap:12px;}
+  .order-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 16px 14px;position:relative;border-left:5px solid var(--s0);}
+  .order-card.issue-active{border-left-color:var(--issue);}
+  .card-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
+  .order-id{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;color:var(--navy);}
+  .client-badge{display:inline-block;background:var(--gold-soft);color:#7A5B10;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:0.3px;margin-left:8px;}
+  .source-tag{font-size:11px;color:var(--ink-soft);}
+  .customer-name{font-weight:600;font-size:15px;margin:2px 0 8px;}
+  .items{display:flex;flex-direction:column;gap:5px;margin-bottom:10px;}
+  .item-row{display:flex;align-items:center;gap:8px;font-size:13.5px;flex-wrap:wrap;}
+  .part-tag{font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;background:var(--navy-deep);color:#fff;padding:2px 7px;border-radius:5px;letter-spacing:0.3px;position:relative;}
+  .item-desc{color:var(--ink);}
+  .item-meta{color:var(--ink-soft);font-size:12px;}
+  .stepper{display:flex;gap:4px;margin:10px 0 8px;}
+  .step{flex:1;height:8px;border-radius:5px;background:#EDEBE4;cursor:pointer;position:relative;}
+  .step.done{background:var(--stepcolor,var(--s4));}
+  .stepper-label{font-size:11.5px;color:var(--ink-soft);margin-top:4px;font-weight:600;}
+  .card-bottom{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px;}
+  .meta-line{font-size:12px;color:var(--ink-soft);display:flex;gap:10px;flex-wrap:wrap;}
+  .assignee{display:inline-flex;align-items:center;gap:4px;font-weight:700;font-size:11px;padding:2px 8px;border-radius:20px;background:#EEF1F6;color:var(--navy);}
+  .card-actions{display:flex;gap:6px;}
+  .notes-line{font-size:12.5px;color:var(--ink-soft);font-style:italic;margin-top:6px;}
+  .issue-banner{margin-top:10px;background:var(--issue-soft);border-radius:10px;padding:10px 12px;}
+  .issue-banner .ib-title{font-weight:700;color:var(--issue);font-size:12.5px;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:6px;}
+  .issue-banner .ib-reason{font-size:13px;margin-bottom:8px;}
+  .empty-state{text-align:center;padding:60px 20px;color:var(--ink-soft);}
+  .empty-state .big{font-family:'Bebas Neue',sans-serif;font-size:26px;color:var(--navy-deep);margin-bottom:6px;}
+  .modal-overlay{position:fixed;inset:0;background:rgba(20,22,25,0.5);display:none;align-items:flex-start;justify-content:center;padding:24px 16px;overflow-y:auto;z-index:50;}
+  .modal-overlay.open{display:flex;}
+  .modal{background:#fff;border-radius:16px;max-width:560px;width:100%;padding:22px 22px 20px;box-shadow:0 20px 60px rgba(0,0,0,0.25);}
+  .modal h2{font-family:'Bebas Neue',sans-serif;font-size:24px;margin:0 0 14px;color:var(--navy-deep);}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.3px;}
+  .field input,.field select,.field textarea{width:100%;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .item-input-row{display:grid;grid-template-columns:1fr 90px 60px 70px auto;gap:6px;margin-bottom:6px;align-items:center;}
+  .item-input-row input{width:100%;}
+  .remove-item{background:none;border:none;color:var(--issue);cursor:pointer;font-size:18px;padding:0 4px;}
+  .add-item-btn{font-size:12.5px;color:var(--navy);background:none;border:1.5px dashed var(--line);border-radius:8px;padding:7px 10px;cursor:pointer;width:100%;font-weight:600;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}
+  .field-hint{font-size:11px;color:var(--ink-soft);margin-top:3px;}
+  .setup-banner{max-width:560px;margin:60px auto;padding:28px 24px;font-family:'Inter',sans-serif;text-align:left;background:#fff;border-radius:16px;box-shadow:var(--shadow);}
+  .setup-banner h1{font-size:26px;margin-bottom:10px;}
+  .setup-banner code{background:#F0EEE8;padding:2px 6px;border-radius:5px;font-family:'JetBrains Mono',monospace;font-size:13px;}
+  .setup-banner ol{padding-left:20px;line-height:1.7;}
+  @media (max-width:520px){
+    h1{font-size:24px;}
+    .item-input-row{grid-template-columns:1fr 1fr;grid-template-areas:"desc desc" "part qty" "size remove";}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ============================================================
+   PASTE YOUR FIREBASE CONFIG BELOW.
+   Get this from: Firebase Console > Project Settings > Your apps > Web app
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyBLYCVfX9KNdeQR14wLHEjcmr7Dzq8fN-c",
+  authDomain: "mla-order-tracker.firebaseapp.com",
+  databaseURL: "https://mla-order-tracker-default-rtdb.firebaseio.com",
+  projectId: "mla-order-tracker",
+  storageBucket: "mla-order-tracker.firebasestorage.app",
+  messagingSenderId: "811704876401",
+  appId: "1:811704876401:web:b7de42de4fad53e25c4ad0"
+};
+/* ============================================================ */
+
+const NEEDS_SETUP = firebaseConfig.apiKey.startsWith('PASTE') || firebaseConfig.databaseURL.startsWith('PASTE');
+
+if(NEEDS_SETUP){
+  document.getElementById('app').innerHTML = `
+    <div class="setup-banner">
+      <h1>Almost there</h1>
+      <p>This file is still missing its <code>databaseURL</code>. Create the Realtime Database in your Firebase project (Build &gt; Realtime Database &gt; Create Database), then copy the URL shown at the top of that page.</p>
+      <ol>
+        <li>Open this file in a text editor.</li>
+        <li>Find the <code>firebaseConfig</code> object near the top of the script.</li>
+        <li>Replace <code>databaseURL: "PASTE_YOUR_DATABASE_URL"</code> with your real database URL.</li>
+        <li>Save the file and reload this page (or re-upload it to GitHub Pages).</li>
+      </ol>
+    </div>`;
+} else {
+  document.getElementById('app').innerHTML = document.getElementById('appTemplate').innerHTML;
+  initApp();
+}
+</script>
+
+<template id="appTemplate">
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <div class="brand-mark">MLA</div>
+        <div>
+          <h1>Order Tracker</h1>
+          <div class="subtitle">Merch Los Angeles &middot; shared with Ron &amp; Liz</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+        <div class="sync-row"><span id="syncDot"></span><span id="syncText">Connecting...</span></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-sm" id="refreshBtn">Refresh</button>
+          <button class="btn btn-primary" id="addOrderBtn">+ Add Order</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="dash" id="dashboard"></div>
+
+    <div class="toolbar">
+      <input type="search" id="searchBox" placeholder="Search order #, customer, item, part #...">
+      <select id="clientFilter"><option value="">All Clients</option></select>
+      <select id="assigneeFilter">
+        <option value="">Anyone</option>
+        <option value="Liz">Liz</option>
+        <option value="Ron">Ron</option>
+        <option value="Both">Both</option>
+      </select>
+    </div>
+
+    <div id="orderList"></div>
+  </div>
+
+  <div class="modal-overlay" id="orderModalOverlay">
+    <div class="modal">
+      <h2 id="modalTitle">Add Order</h2>
+      <form id="orderForm">
+        <input type="hidden" id="orderId">
+        <div class="row2">
+          <div class="field">
+            <label>Order # / Reference</label>
+            <input type="text" id="f_orderNum" required placeholder="e.g. 51624">
+          </div>
+          <div class="field">
+            <label>Source</label>
+            <select id="f_source">
+              <option>Shopify</option>
+              <option>Manual/DM</option>
+            </select>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label>Client</label>
+            <input type="text" id="f_client" list="clientList" required placeholder="e.g. NP Steelers">
+            <datalist id="clientList"></datalist>
+          </div>
+          <div class="field">
+            <label>Customer Name</label>
+            <input type="text" id="f_customer" required placeholder="e.g. Sarah Emens">
+          </div>
+        </div>
+        <div class="field">
+          <label>Items</label>
+          <div id="itemRows"></div>
+          <button type="button" class="add-item-btn" id="addItemRow">+ Add another item</button>
+          <div class="field-hint">Include the part number so it's easy to see what to order.</div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label>Date Ordered</label>
+            <input type="date" id="f_date">
+          </div>
+          <div class="field">
+            <label>Assigned To</label>
+            <select id="f_assignee">
+              <option>Ron</option>
+              <option>Liz</option>
+              <option>Both</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select id="f_status">
+            <option value="0">Order Received</option>
+            <option value="1">Art Ordered</option>
+            <option value="2">Blank Ordered</option>
+            <option value="3">Art &amp; Blank Received</option>
+            <option value="4">Pressed, Packed &amp; Shipped</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Notes</label>
+          <textarea id="f_notes" rows="2" placeholder="Anything worth flagging..."></textarea>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="cancelModalBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveOrderBtn">Save Order</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="issueModalOverlay">
+    <div class="modal">
+      <h2>Flag an Issue / Reorder</h2>
+      <form id="issueForm">
+        <input type="hidden" id="issueOrderId">
+        <div class="field">
+          <label>What happened?</label>
+          <textarea id="f_issueReason" rows="2" required placeholder="e.g. Sent size S instead of L, needs replacement"></textarea>
+        </div>
+        <div class="field">
+          <label>Reorder Status</label>
+          <select id="f_issueStatus">
+            <option value="0">Art Ordered</option>
+            <option value="1">Blank Ordered</option>
+            <option value="2">Art &amp; Blank Received</option>
+            <option value="3">Re-Pressed, Packed &amp; Shipped</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="cancelIssueBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background:var(--issue)">Save Issue</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</template>
+
+<script>
+function initApp(){
+
+const STAGES = ['Order Received','Art Ordered','Blank Ordered','Art & Blank Received','Pressed, Packed & Shipped'];
+const STAGE_COLORS = ['var(--s0)','var(--s1)','var(--s2)','var(--s3)','var(--s4)'];
+const ISSUE_STAGES = ['Art Ordered','Blank Ordered','Art & Blank Received','Re-Shipped'];
+const DEFAULT_CLIENTS = ['NP Steelers','SFV Chargers'];
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const ordersRef = db.ref('orders');
+const clientsRef = db.ref('clients');
+
+let orders = [];
+let clients = [...DEFAULT_CLIENTS];
+let activeStageFilter = null;
+let itemRowCount = 0;
+
+const $ = (id) => document.getElementById(id);
+function uid(){ return 'ord_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function escapeHtml(s){ return String(s || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+function setSync(state){
+  const dot = $('syncDot'), text = $('syncText');
+  dot.classList.remove('busy','error');
+  if(state === 'busy'){ dot.classList.add('busy'); text.textContent = 'Saving...'; }
+  else if(state === 'error'){ dot.classList.add('error'); text.textContent = 'Connection issue — check internet'; }
+  else { text.textContent = 'Live'; }
+}
+
+/* Real-time listeners — both devices get pushed updates instantly, no polling. */
+ordersRef.on('value', snapshot => {
+  const val = snapshot.val() || {};
+  orders = Object.keys(val).map(id => ({ ...val[id], id }));
+  setSync('ok');
+  render();
+}, () => setSync('error'));
+
+clientsRef.on('value', snapshot => {
+  const val = snapshot.val();
+  clients = val ? Object.values(val) : [...DEFAULT_CLIENTS];
+  renderClientOptions();
+});
+
+function renderClientOptions(){
+  const dl = $('clientList');
+  dl.innerHTML = clients.map(c => `<option value="${escapeHtml(c)}">`).join('');
+  const filterSel = $('clientFilter');
+  const current = filterSel.value;
+  filterSel.innerHTML = '<option value="">All Clients</option>' + clients.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  filterSel.value = current;
+}
+
+async function ensureClient(name){
+  if(!name || clients.includes(name)) return;
+  try{ await clientsRef.push(name); }catch(e){}
+}
+
+function computeCounts(){
+  const counts = [0,0,0,0,0];
+  let issueCount = 0;
+  orders.forEach(o => {
+    if(o.issue && o.issue.active) issueCount++;
+    else counts[o.status]++;
+  });
+  return {counts, issueCount};
+}
+
+function renderDashboard(){
+  const {counts, issueCount} = computeCounts();
+  const dash = $('dashboard');
+  let html = '';
+  STAGES.forEach((label, i) => {
+    const active = activeStageFilter === i ? 'active' : '';
+    html += `<button class="stage-chip ${active}" data-stage="${i}">
+      <span class="dot" style="background:${STAGE_COLORS[i]}"></span>
+      <div class="count">${counts[i]}</div>
+      <div class="label">${label}</div>
+    </button>`;
+  });
+  const issueActive = activeStageFilter === 'issue' ? 'active' : '';
+  html += `<button class="stage-chip issue ${issueActive}" data-stage="issue">
+      <span class="dot" style="background:var(--issue)"></span>
+      <div class="count">${issueCount}</div>
+      <div class="label">Needs Reorder</div>
+    </button>`;
+  dash.innerHTML = html;
+  dash.querySelectorAll('.stage-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const val = btn.dataset.stage === 'issue' ? 'issue' : Number(btn.dataset.stage);
+      activeStageFilter = (activeStageFilter === val) ? null : val;
+      render();
+    });
+  });
+}
+
+function matchesFilters(o){
+  const search = $('searchBox').value.trim().toLowerCase();
+  const clientF = $('clientFilter').value;
+  const assigneeF = $('assigneeFilter').value;
+  if(activeStageFilter === 'issue' && !(o.issue && o.issue.active)) return false;
+  if(typeof activeStageFilter === 'number' && (o.status !== activeStageFilter || (o.issue && o.issue.active))) return false;
+  if(clientF && o.client !== clientF) return false;
+  if(assigneeF && o.assignedTo !== assigneeF) return false;
+  if(search){
+    const hay = [o.orderNum, o.customer, o.client, o.notes, ...(o.items||[]).map(it => it.desc + ' ' + it.part)].join(' ').toLowerCase();
+    if(!hay.includes(search)) return false;
+  }
+  return true;
+}
+
+function orderCardHtml(o){
+  const isIssue = o.issue && o.issue.active;
+  const borderColor = isIssue ? 'var(--issue)' : STAGE_COLORS[o.status];
+  const itemsHtml = (o.items||[]).map(it => `
+    <div class="item-row">
+      ${it.part ? `<span class="part-tag">#${escapeHtml(it.part)}</span>` : ''}
+      <span class="item-desc">${escapeHtml(it.desc)}</span>
+      <span class="item-meta">${it.size ? escapeHtml(it.size) + ' &middot; ' : ''}Qty ${it.qty || 1}</span>
+    </div>`).join('');
+
+  let stepperHtml = '';
+  if(!isIssue){
+    stepperHtml = `<div class="stepper">` +
+      STAGES.map((s,i) => `<div class="step ${i<=o.status?'done':''}" style="--stepcolor:${STAGE_COLORS[o.status]}" data-order="${o.id}" data-step="${i}" title="${s}"></div>`).join('') +
+      `</div><div class="stepper-label">${STAGES[o.status]}</div>`;
+  }
+
+  let issueHtml = '';
+  if(isIssue){
+    const stepperIssue = `<div class="stepper">` +
+      ISSUE_STAGES.map((s,i) => `<div class="step ${i<=o.issue.status?'done':''}" style="--stepcolor:var(--issue)" data-order="${o.id}" data-step="${i}" data-issue-step="1" title="${s}"></div>`).join('') +
+      `</div><div class="stepper-label" style="color:var(--issue)">${ISSUE_STAGES[o.issue.status]}</div>`;
+    issueHtml = `<div class="issue-banner">
+      <div class="ib-title">Needs Reorder</div>
+      <div class="ib-reason">${escapeHtml(o.issue.reason)}</div>
+      ${stepperIssue}
+      <div style="margin-top:8px;"><button class="btn btn-ghost btn-sm resolve-issue" data-order="${o.id}">Mark Resolved</button></div>
+    </div>`;
+  }
+
+  return `<div class="order-card ${isIssue?'issue-active':''}" style="border-left-color:${borderColor}">
+    <div class="card-top">
+      <div><span class="order-id">#${escapeHtml(o.orderNum)}</span><span class="client-badge">${escapeHtml(o.client)}</span></div>
+      <span class="source-tag">${escapeHtml(o.source)}</span>
+    </div>
+    <div class="customer-name">${escapeHtml(o.customer)}</div>
+    <div class="items">${itemsHtml}</div>
+    ${stepperHtml}
+    ${issueHtml}
+    ${o.notes ? `<div class="notes-line">${escapeHtml(o.notes)}</div>` : ''}
+    <div class="card-bottom">
+      <div class="meta-line">
+        <span class="assignee">${escapeHtml(o.assignedTo)}</span>
+        <span>${o.dateOrdered ? new Date(o.dateOrdered+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ''}</span>
+      </div>
+      <div class="card-actions">
+        ${!isIssue ? `<button class="btn btn-ghost btn-sm flag-issue" data-order="${o.id}">Flag Issue</button>` : ''}
+        <button class="btn btn-ghost btn-sm edit-order" data-order="${o.id}">Edit</button>
+        <button class="btn btn-ghost btn-sm delete-order" data-order="${o.id}" style="color:var(--issue)">Delete</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function render(){
+  renderDashboard();
+  const list = $('orderList');
+  const filtered = orders.filter(matchesFilters).sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+  if(filtered.length === 0){
+    list.innerHTML = `<div class="empty-state"><div class="big">No orders here</div>Try clearing filters, or add a new order to get started.</div>`;
+    return;
+  }
+  list.innerHTML = filtered.map(orderCardHtml).join('');
+  attachCardListeners();
+}
+
+function attachCardListeners(){
+  document.querySelectorAll('.step').forEach(step => {
+    step.addEventListener('click', async () => {
+      const id = step.dataset.order;
+      const stepIdx = Number(step.dataset.step);
+      const isIssueStep = step.dataset.issueStep === '1';
+      const o = orders.find(x => x.id === id);
+      if(!o) return;
+      setSync('busy');
+      try{
+        if(isIssueStep){ await ordersRef.child(id).child('issue').update({ status: stepIdx }); }
+        else { await ordersRef.child(id).update({ status: stepIdx }); }
+      }catch(e){ setSync('error'); }
+    });
+  });
+  document.querySelectorAll('.flag-issue').forEach(btn => {
+    btn.addEventListener('click', () => openIssueModal(btn.dataset.order));
+  });
+  document.querySelectorAll('.resolve-issue').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if(!confirm('Mark this issue as resolved? The order will return to its normal status.')) return;
+      setSync('busy');
+      try{ await ordersRef.child(btn.dataset.order).update({ issue: null }); }
+      catch(e){ setSync('error'); }
+    });
+  });
+  document.querySelectorAll('.edit-order').forEach(btn => {
+    btn.addEventListener('click', () => openOrderModal(btn.dataset.order));
+  });
+  document.querySelectorAll('.delete-order').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if(!confirm('Delete this order? This cannot be undone.')) return;
+      setSync('busy');
+      try{ await ordersRef.child(btn.dataset.order).remove(); }
+      catch(e){ setSync('error'); }
+    });
+  });
+}
+
+function addItemRow(item){
+  itemRowCount++;
+  const rowId = 'item_' + itemRowCount;
+  const div = document.createElement('div');
+  div.className = 'item-input-row';
+  div.id = rowId;
+  div.innerHTML = `
+    <input type="text" placeholder="Item description" class="it-desc" value="${escapeHtml(item?.desc||'')}" style="grid-area:desc;">
+    <input type="text" placeholder="Part #" class="it-part" value="${escapeHtml(item?.part||'')}" style="grid-area:part;">
+    <input type="number" min="1" placeholder="Qty" class="it-qty" value="${item?.qty||1}" style="grid-area:qty;">
+    <input type="text" placeholder="Size" class="it-size" value="${escapeHtml(item?.size||'')}" style="grid-area:size;">
+    <button type="button" class="remove-item" style="grid-area:remove;">&times;</button>
+  `;
+  div.querySelector('.remove-item').addEventListener('click', () => div.remove());
+  $('itemRows').appendChild(div);
+}
+
+function collectItems(){
+  const rows = $('itemRows').querySelectorAll('.item-input-row');
+  const items = [];
+  rows.forEach(r => {
+    const desc = r.querySelector('.it-desc').value.trim();
+    if(!desc) return;
+    items.push({
+      desc,
+      part: r.querySelector('.it-part').value.trim(),
+      qty: Number(r.querySelector('.it-qty').value) || 1,
+      size: r.querySelector('.it-size').value.trim()
+    });
+  });
+  return items;
+}
+
+function openOrderModal(orderId){
+  $('itemRows').innerHTML = '';
+  itemRowCount = 0;
+  if(orderId){
+    const o = orders.find(x => x.id === orderId);
+    if(!o) return;
+    $('modalTitle').textContent = 'Edit Order';
+    $('orderId').value = o.id;
+    $('f_orderNum').value = o.orderNum;
+    $('f_source').value = o.source;
+    $('f_client').value = o.client;
+    $('f_customer').value = o.customer;
+    $('f_date').value = o.dateOrdered || '';
+    $('f_assignee').value = o.assignedTo;
+    $('f_status').value = o.status;
+    $('f_notes').value = o.notes || '';
+    (o.items && o.items.length ? o.items : [{}]).forEach(addItemRow);
+  } else {
+    $('modalTitle').textContent = 'Add Order';
+    $('orderForm').reset();
+    $('orderId').value = '';
+    $('f_date').value = new Date().toISOString().slice(0,10);
+    addItemRow();
+  }
+  $('orderModalOverlay').classList.add('open');
+}
+function closeOrderModal(){ $('orderModalOverlay').classList.remove('open'); }
+
+function openIssueModal(orderId){
+  $('issueOrderId').value = orderId;
+  $('f_issueReason').value = '';
+  $('f_issueStatus').value = 0;
+  $('issueModalOverlay').classList.add('open');
+}
+function closeIssueModal(){ $('issueModalOverlay').classList.remove('open'); }
+
+$('addOrderBtn').addEventListener('click', () => openOrderModal(null));
+$('cancelModalBtn').addEventListener('click', closeOrderModal);
+$('addItemRow').addEventListener('click', () => addItemRow());
+$('refreshBtn').addEventListener('click', () => ordersRef.once('value').then(() => setSync('ok')));
+$('searchBox').addEventListener('input', render);
+$('clientFilter').addEventListener('change', render);
+$('assigneeFilter').addEventListener('change', render);
+$('cancelIssueBtn').addEventListener('click', closeIssueModal);
+
+$('orderForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('orderId').value || uid();
+  const client = $('f_client').value.trim();
+  await ensureClient(client);
+  const existing = orders.find(x => x.id === id);
+  const orderData = {
+    id,
+    createdAt: existing ? existing.createdAt : Date.now(),
+    issue: existing ? (existing.issue || null) : null,
+    orderNum: $('f_orderNum').value.trim(),
+    source: $('f_source').value,
+    client,
+    customer: $('f_customer').value.trim(),
+    items: collectItems(),
+    dateOrdered: $('f_date').value,
+    assignedTo: $('f_assignee').value,
+    status: Number($('f_status').value),
+    notes: $('f_notes').value.trim()
+  };
+  setSync('busy');
+  try{
+    await ordersRef.child(id).set(orderData);
+    closeOrderModal();
+  }catch(e){ setSync('error'); }
+});
+
+$('issueForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const orderId = $('issueOrderId').value;
+  const issueValues = {
+    active: true,
+    reason: $('f_issueReason').value.trim(),
+    status: Number($('f_issueStatus').value)
+  };
+  setSync('busy');
+  try{
+    await ordersRef.child(orderId).update({ issue: issueValues });
+    closeIssueModal();
+  }catch(e){ setSync('error'); }
+});
+
+[$('orderModalOverlay'), $('issueModalOverlay')].forEach(ov => {
+  ov.addEventListener('click', (e) => { if(e.target === ov) ov.classList.remove('open'); });
+});
+
+renderClientOptions();
+render();
+
+} // end initApp
+</script>
+</body>
+</html>
