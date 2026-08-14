@@ -134,21 +134,29 @@ const firebaseConfig = {
 
 const NEEDS_SETUP = firebaseConfig.apiKey.startsWith('PASTE') || firebaseConfig.databaseURL.startsWith('PASTE');
 
-if(NEEDS_SETUP){
-  document.getElementById('app').innerHTML = `
-    <div class="setup-banner">
-      <h1>Almost there</h1>
-      <p>This file is still missing its <code>databaseURL</code>. Create the Realtime Database in your Firebase project (Build &gt; Realtime Database &gt; Create Database), then copy the URL shown at the top of that page.</p>
-      <ol>
-        <li>Open this file in a text editor.</li>
-        <li>Find the <code>firebaseConfig</code> object near the top of the script.</li>
-        <li>Replace <code>databaseURL: "PASTE_YOUR_DATABASE_URL"</code> with your real database URL.</li>
-        <li>Save the file and reload this page (or re-upload it to GitHub Pages).</li>
-      </ol>
-    </div>`;
+function boot(){
+  if(NEEDS_SETUP){
+    document.getElementById('app').innerHTML = `
+      <div class="setup-banner">
+        <h1>Almost there</h1>
+        <p>This file is still missing its <code>databaseURL</code>. Create the Realtime Database in your Firebase project (Databases &amp; Storage &gt; Realtime Database &gt; Create Database), then copy the URL shown at the top of that page.</p>
+        <ol>
+          <li>Open this file in a text editor.</li>
+          <li>Find the <code>firebaseConfig</code> object near the top of the script.</li>
+          <li>Replace <code>databaseURL: "PASTE_YOUR_DATABASE_URL"</code> with your real database URL.</li>
+          <li>Save the file and reload this page (or re-upload it to GitHub Pages).</li>
+        </ol>
+      </div>`;
+  } else {
+    document.getElementById('app').innerHTML = document.getElementById('appTemplate').innerHTML;
+    initApp();
+  }
+}
+
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', boot);
 } else {
-  document.getElementById('app').innerHTML = document.getElementById('appTemplate').innerHTML;
-  initApp();
+  boot();
 }
 </script>
 
