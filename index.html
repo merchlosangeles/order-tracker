@@ -750,6 +750,17 @@ function reportToTSV(rows){
   return [header, ...lines].join('\n');
 }
 
+function csvField(v){
+  const s = String(v == null ? '' : v);
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+
+function reportToCSV(rows){
+  const header = ['Part #','Item','Color','Size','Qty'].map(csvField).join(',');
+  const lines = rows.map(r => [r.part || '—', r.desc || '—', r.color || '—', r.size || '—', r.qty].map(csvField).join(','));
+  return [header, ...lines].join('\r\n');
+}
+
 function renderReportModal(){
   const { rows, emptyOrders } = computeBlanksReport();
   const wrap = $('reportTableWrap');
@@ -797,8 +808,8 @@ $('copyReportBtn').addEventListener('click', async () => {
   }
 });
 $('downloadReportBtn').addEventListener('click', () => {
-  const tsv = reportToTSV(computeBlanksReport().rows);
-  const blob = new Blob([tsv], { type: 'text/tab-separated-values' });
+  const csv = reportToCSV(computeBlanksReport().rows);
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
