@@ -320,7 +320,7 @@ if(document.readyState === 'loading'){
   <div class="modal-overlay" id="reportModalOverlay">
     <div class="modal" style="max-width:680px;">
       <h2>Blanks Report</h2>
-      <div class="report-summary">Totals from orders in "Order Received" or "Needs Reorder" — what to order right now.</div>
+      <div class="report-summary">Totals from orders in "Order Received", "Art Ordered", or "Needs Reorder" — anything that still needs its blank ordered.</div>
       <div id="reportTableWrap"></div>
       <div class="report-actions">
         <button type="button" class="btn btn-ghost btn-sm" id="copyReportBtn">Copy to clipboard</button>
@@ -507,10 +507,18 @@ function orderCardHtml(o){
   </div>`;
 }
 
+function sortTimestamp(o){
+  if(o.dateOrdered){
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(o.dateOrdered) ? new Date(o.dateOrdered+'T00:00:00') : new Date(o.dateOrdered);
+    if(!isNaN(d.getTime())) return d.getTime();
+  }
+  return o.createdAt || 0;
+}
+
 function render(){
   renderDashboard();
   const list = $('orderList');
-  const filtered = orders.filter(matchesFilters).sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+  const filtered = orders.filter(matchesFilters).sort((a,b) => sortTimestamp(b) - sortTimestamp(a));
   const selectableVisible = filtered.filter(o => !(o.issue && o.issue.active));
 
   let topHtml = '';
@@ -691,7 +699,7 @@ function computeBlanksReport(){
   const rows = new Map();
   orders.forEach(o => {
     const isIssue = o.issue && o.issue.active;
-    const inScope = isIssue || o.status === 0;
+    const inScope = isIssue || o.status === 0 || o.status === 1;
     if(!inScope) return;
     (o.items || []).forEach(it => {
       const desc = (it.desc || '').trim();
