@@ -123,6 +123,14 @@
   .setup-banner h1{font-size:26px;margin-bottom:10px;}
   .setup-banner code{background:#F0EEE8;padding:2px 6px;border-radius:5px;font-family:'JetBrains Mono',monospace;font-size:13px;}
   .setup-banner ol{padding-left:20px;line-height:1.7;}
+  .report-table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:10px;}
+  .report-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--ink-soft);border-bottom:2px solid var(--line);padding:6px 8px;}
+  .report-table td{padding:7px 8px;border-bottom:1px solid var(--line);}
+  .report-table tr:last-child td{border-bottom:none;}
+  .report-table .qty-cell{font-weight:700;text-align:right;font-family:'JetBrains Mono',monospace;}
+  .report-empty{text-align:center;color:var(--ink-soft);padding:30px 10px;font-size:13.5px;}
+  .report-summary{font-size:12px;color:var(--ink-soft);margin-top:4px;}
+  .report-actions{display:flex;gap:8px;margin-top:14px;justify-content:flex-end;}
   @media (max-width:520px){
     h1{font-size:24px;}
     .item-input-row{grid-template-columns:1fr 1fr;grid-template-areas:"desc desc" "part qty" "size color" "remove remove";}
@@ -190,6 +198,7 @@ if(document.readyState === 'loading'){
         <div class="sync-row"><span id="syncDot"></span><span id="syncText">Connecting...</span></div>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-ghost btn-sm" id="refreshBtn">Refresh</button>
+          <button class="btn btn-ghost btn-sm" id="blanksReportBtn">Blanks Report</button>
           <button class="btn btn-primary" id="addOrderBtn">+ Add Order</button>
         </div>
       </div>
@@ -305,6 +314,19 @@ if(document.readyState === 'loading'){
           <button type="submit" class="btn btn-primary" style="background:var(--issue)">Save Issue</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="reportModalOverlay">
+    <div class="modal" style="max-width:680px;">
+      <h2>Blanks Report</h2>
+      <div class="report-summary">Totals from orders in "Order Received" or "Needs Reorder" — what to order right now.</div>
+      <div id="reportTableWrap"></div>
+      <div class="report-actions">
+        <button type="button" class="btn btn-ghost btn-sm" id="copyReportBtn">Copy to clipboard</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="downloadReportBtn">Download CSV</button>
+        <button type="button" class="btn btn-primary" id="closeReportBtn">Close</button>
+      </div>
     </div>
   </div>
 </template>
@@ -665,6 +687,89 @@ function openIssueModal(orderId){
 }
 function closeIssueModal(){ $('issueModalOverlay').classList.remove('open'); }
 
+function computeBlanksReport(){
+  const rows = new Map();
+  orders.forEach(o => {
+    const isIssue = o.issue && o.issue.active;
+    const inScope = isIssue || o.status === 0;
+    if(!inScope) return;
+    (o.items || []).forEach(it => {
+      const desc = (it.desc || '').trim();
+      const part = (it.part || '').trim();
+      const color = (it.color || '').trim();
+      const size = (it.size || '').trim();
+      const qty = Number(it.qty) || 0;
+      if(!desc && !part) return;
+      const key = [part.toLowerCase(), desc.toLowerCase(), color.toLowerCase(), size.toLowerCase()].join('|');
+      if(!rows.has(key)){
+        rows.set(key, { part, desc, color, size, qty: 0 });
+      }
+      rows.get(key).qty += qty;
+    });
+  });
+  return [...rows.values()].sort((a,b) => {
+    return (a.part || a.desc).localeCompare(b.part || b.desc) || a.color.localeCompare(b.color) || a.size.localeCompare(b.size);
+  });
+}
+
+function reportToTSV(rows){
+  const header = ['Part #','Item','Color','Size','Qty'].join('\t');
+  const lines = rows.map(r => [r.part || '—', r.desc || '—', r.color || '—', r.size || '—', r.qty].join('\t'));
+  return [header, ...lines].join('\n');
+}
+
+function renderReportModal(){
+  const rows = computeBlanksReport();
+  const wrap = $('reportTableWrap');
+  if(rows.length === 0){
+    wrap.innerHTML = `<div class="report-empty">Nothing to order right now — no items in "Order Received" or "Needs Reorder".</div>`;
+    return;
+  }
+  wrap.innerHTML = `<table class="report-table">
+    <thead><tr><th>Part #</th><th>Item</th><th>Color</th><th>Size</th><th style="text-align:right;">Qty</th></tr></thead>
+    <tbody>
+      ${rows.map(r => `<tr>
+        <td>${r.part ? `<span class="part-tag">#${escapeHtml(r.part)}</span>` : '—'}</td>
+        <td>${escapeHtml(r.desc) || '—'}</td>
+        <td>${escapeHtml(r.color) || '—'}</td>
+        <td>${escapeHtml(r.size) || '—'}</td>
+        <td class="qty-cell">${r.qty}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+function openReportModal(){
+  renderReportModal();
+  $('reportModalOverlay').classList.add('open');
+}
+function closeReportModal(){ $('reportModalOverlay').classList.remove('open'); }
+
+$('blanksReportBtn').addEventListener('click', openReportModal);
+$('closeReportBtn').addEventListener('click', closeReportModal);
+$('copyReportBtn').addEventListener('click', async () => {
+  const tsv = reportToTSV(computeBlanksReport());
+  try{
+    await navigator.clipboard.writeText(tsv);
+    const btn = $('copyReportBtn');
+    const original = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = original; }, 1500);
+  }catch(e){
+    alert('Could not copy automatically — you can select and copy the table manually.');
+  }
+});
+$('downloadReportBtn').addEventListener('click', () => {
+  const tsv = reportToTSV(computeBlanksReport());
+  const blob = new Blob([tsv], { type: 'text/tab-separated-values' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `blanks-report-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
 $('addOrderBtn').addEventListener('click', () => openOrderModal(null));
 $('cancelModalBtn').addEventListener('click', closeOrderModal);
 $('addItemRow').addEventListener('click', () => addItemRow());
@@ -716,7 +821,7 @@ $('issueForm').addEventListener('submit', async (e) => {
   }catch(e){ setSync('error'); }
 });
 
-[$('orderModalOverlay'), $('issueModalOverlay')].forEach(ov => {
+[$('orderModalOverlay'), $('issueModalOverlay'), $('reportModalOverlay')].forEach(ov => {
   ov.addEventListener('click', (e) => { if(e.target === ov) ov.classList.remove('open'); });
 });
 
