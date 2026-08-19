@@ -129,6 +129,7 @@
   .report-table tr:last-child td{border-bottom:none;}
   .report-table .qty-cell{font-weight:700;text-align:right;font-family:'JetBrains Mono',monospace;}
   .report-empty{text-align:center;color:var(--ink-soft);padding:30px 10px;font-size:13.5px;}
+  .report-warning{background:var(--issue-soft);color:#8a2c24;border-radius:8px;padding:8px 10px;font-size:12.5px;margin-top:10px;font-weight:600;}
   .report-summary{font-size:12px;color:var(--ink-soft);margin-top:4px;}
   .report-actions{display:flex;gap:8px;margin-top:14px;justify-content:flex-end;}
   @media (max-width:520px){
@@ -697,11 +698,18 @@ function closeIssueModal(){ $('issueModalOverlay').classList.remove('open'); }
 
 function computeBlanksReport(){
   const rows = new Map();
+  const emptyOrders = [];
   orders.forEach(o => {
     const isIssue = o.issue && o.issue.active;
     const inScope = isIssue || o.status === 0 || o.status === 1;
     if(!inScope) return;
-    (o.items || []).forEach(it => {
+    const items = o.items || [];
+    const hasRealItems = items.some(it => (it.desc || '').trim() || (it.part || '').trim());
+    if(!hasRealItems){
+      emptyOrders.push(o);
+      return;
+    }
+    items.forEach(it => {
       const desc = (it.desc || '').trim();
       const part = (it.part || '').trim();
       const color = (it.color || '').trim();
@@ -715,9 +723,12 @@ function computeBlanksReport(){
       rows.get(key).qty += qty;
     });
   });
-  return [...rows.values()].sort((a,b) => {
-    return (a.part || a.desc).localeCompare(b.part || b.desc) || a.color.localeCompare(b.color) || a.size.localeCompare(b.size);
-  });
+  return {
+    rows: [...rows.values()].sort((a,b) => {
+      return (a.part || a.desc).localeCompare(b.part || b.desc) || a.color.localeCompare(b.color) || a.size.localeCompare(b.size);
+    }),
+    emptyOrders
+  };
 }
 
 function reportToTSV(rows){
@@ -727,13 +738,18 @@ function reportToTSV(rows){
 }
 
 function renderReportModal(){
-  const rows = computeBlanksReport();
+  const { rows, emptyOrders } = computeBlanksReport();
   const wrap = $('reportTableWrap');
+  let warningHtml = '';
+  if(emptyOrders.length > 0){
+    const list = emptyOrders.map(o => `#${escapeHtml(o.orderNum)} (${escapeHtml(o.customer)})`).join(', ');
+    warningHtml = `<div class="report-warning">⚠ ${emptyOrders.length} order(s) in scope have no item data and are NOT counted below: ${list}. Check these manually before ordering.</div>`;
+  }
   if(rows.length === 0){
-    wrap.innerHTML = `<div class="report-empty">Nothing to order right now — no items in "Order Received" or "Needs Reorder".</div>`;
+    wrap.innerHTML = warningHtml + `<div class="report-empty">Nothing to order right now — no items in "Order Received", "Art Ordered", or "Needs Reorder".</div>`;
     return;
   }
-  wrap.innerHTML = `<table class="report-table">
+  wrap.innerHTML = warningHtml + `<table class="report-table">
     <thead><tr><th>Part #</th><th>Item</th><th>Color</th><th>Size</th><th style="text-align:right;">Qty</th></tr></thead>
     <tbody>
       ${rows.map(r => `<tr>
@@ -756,7 +772,7 @@ function closeReportModal(){ $('reportModalOverlay').classList.remove('open'); }
 $('blanksReportBtn').addEventListener('click', openReportModal);
 $('closeReportBtn').addEventListener('click', closeReportModal);
 $('copyReportBtn').addEventListener('click', async () => {
-  const tsv = reportToTSV(computeBlanksReport());
+  const tsv = reportToTSV(computeBlanksReport().rows);
   try{
     await navigator.clipboard.writeText(tsv);
     const btn = $('copyReportBtn');
@@ -768,7 +784,7 @@ $('copyReportBtn').addEventListener('click', async () => {
   }
 });
 $('downloadReportBtn').addEventListener('click', () => {
-  const tsv = reportToTSV(computeBlanksReport());
+  const tsv = reportToTSV(computeBlanksReport().rows);
   const blob = new Blob([tsv], { type: 'text/tab-separated-values' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
