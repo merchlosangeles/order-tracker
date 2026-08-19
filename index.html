@@ -83,7 +83,7 @@
   .meta-line{font-size:12px;color:var(--ink-soft);display:flex;gap:10px;flex-wrap:wrap;}
   .assignee{display:inline-flex;align-items:center;gap:4px;font-weight:700;font-size:11px;padding:2px 8px;border-radius:20px;background:#EEF1F6;color:var(--navy);}
   .card-actions{display:flex;gap:6px;}
-  .notes-line{font-size:12.5px;color:var(--ink-soft);font-style:italic;margin-top:6px;}
+  .notes-line{font-size:12.5px;color:var(--ink-soft);font-style:italic;margin-top:6px;white-space:pre-line;}
   .issue-banner{margin-top:10px;background:var(--issue-soft);border-radius:10px;padding:10px 12px;}
   .issue-banner .ib-title{font-weight:700;color:var(--issue);font-size:12.5px;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:6px;}
   .issue-banner .ib-reason{font-size:13px;margin-bottom:8px;}
@@ -97,7 +97,7 @@
   .field label{display:block;font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.3px;}
   .field input,.field select,.field textarea{width:100%;}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-  .item-input-row{display:grid;grid-template-columns:1fr 90px 60px 70px auto;grid-template-areas:"desc part qty size remove";gap:6px;margin-bottom:6px;align-items:center;}
+  .item-input-row{display:grid;grid-template-columns:1fr 90px 60px 70px 80px auto;grid-template-areas:"desc part qty size color remove";gap:6px;margin-bottom:6px;align-items:center;}
   .item-input-row input{width:100%;}
   .remove-item{background:none;border:none;color:var(--issue);cursor:pointer;font-size:18px;padding:0 4px;}
   .add-item-btn{font-size:12.5px;color:var(--navy);background:none;border:1.5px dashed var(--line);border-radius:8px;padding:7px 10px;cursor:pointer;width:100%;font-weight:600;}
@@ -109,7 +109,7 @@
   .setup-banner ol{padding-left:20px;line-height:1.7;}
   @media (max-width:520px){
     h1{font-size:24px;}
-    .item-input-row{grid-template-columns:1fr 1fr;grid-template-areas:"desc desc" "part qty" "size remove";}
+    .item-input-row{grid-template-columns:1fr 1fr;grid-template-areas:"desc desc" "part qty" "size color" "remove remove";}
   }
 </style>
 </head>
@@ -404,6 +404,13 @@ function matchesFilters(o){
   return true;
 }
 
+function formatOrderDate(d){
+  if(!d) return '';
+  const dt = /^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(d+'T00:00:00') : new Date(d);
+  if(isNaN(dt.getTime())) return d;
+  return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+}
+
 function orderCardHtml(o){
   const isIssue = o.issue && o.issue.active;
   const borderColor = isIssue ? 'var(--issue)' : STAGE_COLORS[o.status];
@@ -411,7 +418,7 @@ function orderCardHtml(o){
     <div class="item-row">
       ${it.part ? `<span class="part-tag">#${escapeHtml(it.part)}</span>` : ''}
       <span class="item-desc">${escapeHtml(it.desc)}</span>
-      <span class="item-meta">${it.size ? escapeHtml(it.size) + ' &middot; ' : ''}Qty ${it.qty || 1}</span>
+      <span class="item-meta">${it.size ? escapeHtml(it.size) + ' &middot; ' : ''}${it.color ? escapeHtml(it.color) + ' &middot; ' : ''}Qty ${it.qty || 1}</span>
     </div>`).join('');
 
   let stepperHtml = '';
@@ -447,7 +454,7 @@ function orderCardHtml(o){
     <div class="card-bottom">
       <div class="meta-line">
         <span class="assignee">${escapeHtml(o.assignedTo)}</span>
-        <span>${o.dateOrdered ? new Date(o.dateOrdered+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) : ''}</span>
+        <span>${formatOrderDate(o.dateOrdered)}</span>
       </div>
       <div class="card-actions">
         ${!isIssue ? `<button class="btn btn-ghost btn-sm flag-issue" data-order="${o.id}">Flag Issue</button>` : ''}
@@ -520,6 +527,7 @@ function addItemRow(item){
     <input type="text" placeholder="Part #" class="it-part" value="${escapeHtml(item?.part||'')}" style="grid-area:part;">
     <input type="number" min="1" placeholder="Qty" class="it-qty" value="${item?.qty||1}" style="grid-area:qty;">
     <input type="text" placeholder="Size" class="it-size" value="${escapeHtml(item?.size||'')}" style="grid-area:size;">
+    <input type="text" placeholder="Color" class="it-color" value="${escapeHtml(item?.color||'')}" style="grid-area:color;">
     <button type="button" class="remove-item" style="grid-area:remove;">&times;</button>
   `;
   div.querySelector('.remove-item').addEventListener('click', () => div.remove());
@@ -536,7 +544,8 @@ function collectItems(){
       desc,
       part: r.querySelector('.it-part').value.trim(),
       qty: Number(r.querySelector('.it-qty').value) || 1,
-      size: r.querySelector('.it-size').value.trim()
+      size: r.querySelector('.it-size').value.trim(),
+      color: r.querySelector('.it-color').value.trim()
     });
   });
   return items;
