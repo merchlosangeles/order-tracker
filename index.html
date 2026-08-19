@@ -64,6 +64,22 @@
   .toolbar select{min-width:120px;}
   #orderList{display:flex;flex-direction:column;gap:12px;}
   .order-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 16px 14px;position:relative;border-left:5px solid var(--s0);}
+  .order-card.selected{outline:2px solid var(--navy);outline-offset:-1px;}
+  .order-checkbox{position:absolute;top:16px;left:16px;width:18px;height:18px;cursor:pointer;accent-color:var(--navy);}
+  .order-card.has-checkbox{padding-left:42px;}
+  .bulk-bar{
+    position:sticky;top:8px;z-index:20;
+    background:var(--navy-deep);color:#fff;border-radius:12px;
+    padding:10px 14px;margin-bottom:12px;
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    box-shadow:var(--shadow);
+  }
+  .bulk-bar .count{font-weight:700;font-size:13.5px;}
+  .bulk-bar select{border:none;font-size:13.5px;}
+  .bulk-bar .btn-ghost{border-color:rgba(255,255,255,0.4);color:#fff;}
+  .bulk-bar .btn-ghost:hover{border-color:#fff;}
+  .select-all-row{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;}
+  .select-all-row input{accent-color:var(--navy);}
   .order-card.issue-active{border-left-color:var(--issue);}
   .card-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
   .order-id{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;color:var(--navy);}
@@ -310,6 +326,7 @@ let orders = [];
 let clients = [...DEFAULT_CLIENTS];
 let activeStageFilter = null;
 let itemRowCount = 0;
+let selectedIds = new Set();
 
 const $ = (id) => document.getElementById(id);
 function uid(){ return 'ord_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -327,6 +344,8 @@ function setSync(state){
 ordersRef.on('value', snapshot => {
   const val = snapshot.val() || {};
   orders = Object.keys(val).map(id => ({ ...val[id], id }));
+  const liveIds = new Set(orders.map(o => o.id));
+  selectedIds.forEach(id => { if(!liveIds.has(id)) selectedIds.delete(id); });
   setSync('ok');
   render();
 }, () => setSync('error'));
@@ -441,7 +460,8 @@ function orderCardHtml(o){
     </div>`;
   }
 
-  return `<div class="order-card ${isIssue?'issue-active':''}" style="border-left-color:${borderColor}">
+  return `<div class="order-card ${isIssue?'issue-active':''} ${!isIssue?'has-checkbox':''} ${selectedIds.has(o.id)?'selected':''}" style="border-left-color:${borderColor}">
+    ${!isIssue ? `<input type="checkbox" class="order-checkbox" data-order="${o.id}" ${selectedIds.has(o.id)?'checked':''} title="Select for bulk status change">` : ''}
     <div class="card-top">
       <div><span class="order-id">#${escapeHtml(o.orderNum)}</span><span class="client-badge">${escapeHtml(o.client)}</span></div>
       <span class="source-tag">${escapeHtml(o.source)}</span>
@@ -469,15 +489,73 @@ function render(){
   renderDashboard();
   const list = $('orderList');
   const filtered = orders.filter(matchesFilters).sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+  const selectableVisible = filtered.filter(o => !(o.issue && o.issue.active));
+
+  let topHtml = '';
+  if(selectedIds.size > 0){
+    topHtml += `<div class="bulk-bar">
+      <span class="count">${selectedIds.size} selected</span>
+      <select id="bulkStatusSelect">
+        ${STAGES.map((s,i) => `<option value="${i}">${s}</option>`).join('')}
+      </select>
+      <button class="btn btn-primary btn-sm" id="bulkApplyBtn" style="background:#fff;color:var(--navy-deep);">Move selected</button>
+      <button class="btn btn-ghost btn-sm" id="bulkClearBtn">Clear selection</button>
+    </div>`;
+  }
+  if(selectableVisible.length > 0){
+    const allSelected = selectableVisible.every(o => selectedIds.has(o.id));
+    topHtml += `<label class="select-all-row">
+      <input type="checkbox" id="selectAllVisible" ${allSelected?'checked':''}>
+      Select all visible (${selectableVisible.length})
+    </label>`;
+  }
+
   if(filtered.length === 0){
-    list.innerHTML = `<div class="empty-state"><div class="big">No orders here</div>Try clearing filters, or add a new order to get started.</div>`;
+    list.innerHTML = topHtml + `<div class="empty-state"><div class="big">No orders here</div>Try clearing filters, or add a new order to get started.</div>`;
     return;
   }
-  list.innerHTML = filtered.map(orderCardHtml).join('');
+  list.innerHTML = topHtml + filtered.map(orderCardHtml).join('');
   attachCardListeners();
 }
 
 function attachCardListeners(){
+  document.querySelectorAll('.order-checkbox').forEach(cb => {
+    cb.addEventListener('click', (e) => e.stopPropagation());
+    cb.addEventListener('change', () => {
+      const id = cb.dataset.order;
+      if(cb.checked) selectedIds.add(id); else selectedIds.delete(id);
+      render();
+    });
+  });
+  const selectAll = $('selectAllVisible');
+  if(selectAll){
+    selectAll.addEventListener('change', () => {
+      const filtered = orders.filter(matchesFilters).filter(o => !(o.issue && o.issue.active));
+      if(selectAll.checked){ filtered.forEach(o => selectedIds.add(o.id)); }
+      else { filtered.forEach(o => selectedIds.delete(o.id)); }
+      render();
+    });
+  }
+  const bulkApply = $('bulkApplyBtn');
+  if(bulkApply){
+    bulkApply.addEventListener('click', async () => {
+      const newStatus = Number($('bulkStatusSelect').value);
+      const ids = [...selectedIds];
+      if(ids.length === 0) return;
+      if(!confirm(`Move ${ids.length} order(s) to "${STAGES[newStatus]}"?`)) return;
+      setSync('busy');
+      try{
+        await Promise.all(ids.map(id => ordersRef.child(id).update({ status: newStatus })));
+        selectedIds.clear();
+        setSync('ok');
+      }catch(e){ setSync('error'); }
+      render();
+    });
+  }
+  const bulkClear = $('bulkClearBtn');
+  if(bulkClear){
+    bulkClear.addEventListener('click', () => { selectedIds.clear(); render(); });
+  }
   document.querySelectorAll('.step').forEach(step => {
     step.addEventListener('click', async () => {
       const id = step.dataset.order;
