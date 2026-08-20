@@ -108,6 +108,7 @@
   .mark-shipped-btn{margin-top:2px;margin-bottom:4px;}
   .shipped-badge{display:inline-flex;align-items:center;gap:5px;color:var(--s4);font-weight:700;font-size:12.5px;margin:6px 0 4px;}
   .needs-badge{display:inline-block;font-size:10.5px;font-weight:700;color:var(--issue);background:var(--issue-soft);border-radius:6px;padding:1px 7px;margin-left:6px;}
+  .overdue-banner{background:var(--issue);color:#fff;font-weight:700;font-size:12.5px;border-radius:8px;padding:7px 12px;margin:8px 0;}
   .card-bottom{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px;}
   .meta-line{font-size:12px;color:var(--ink-soft);display:flex;gap:10px;flex-wrap:wrap;}
   .assignee{display:inline-flex;align-items:center;gap:4px;font-weight:700;font-size:11px;padding:2px 8px;border-radius:20px;background:#EEF1F6;color:var(--navy);}
@@ -422,18 +423,26 @@ function computeCounts(){
   const counts = {};
   DASHBOARD_TILES.forEach(t => counts[t.key] = 0);
   let issueCount = 0;
+  let overdueCount = 0;
   orders.forEach(o => {
+    if(isOverdue(o)) overdueCount++;
     if(o.issue && o.issue.active){ issueCount++; return; }
     const p = deriveMainProgress(o);
     DASHBOARD_TILES.forEach(t => { if(t.test(p)) counts[t.key]++; });
   });
-  return {counts, issueCount};
+  return {counts, issueCount, overdueCount};
 }
 
 function renderDashboard(){
-  const {counts, issueCount} = computeCounts();
+  const {counts, issueCount, overdueCount} = computeCounts();
   const dash = $('dashboard');
   let html = '';
+  const overdueActive = activeStageFilter === 'overdue' ? 'active' : '';
+  html += `<button class="stage-chip issue ${overdueActive}" data-stage="overdue">
+      <span class="dot" style="background:var(--issue)"></span>
+      <div class="count">${overdueCount}</div>
+      <div class="label">Overdue (5+ Days)</div>
+    </button>`;
   DASHBOARD_TILES.forEach(t => {
     const active = activeStageFilter === t.key ? 'active' : '';
     html += `<button class="stage-chip ${active}" data-stage="${t.key}">
@@ -463,8 +472,9 @@ function matchesFilters(o){
   const clientF = $('clientFilter').value;
   const assigneeF = $('assigneeFilter').value;
   const isIssue = o.issue && o.issue.active;
+  if(activeStageFilter === 'overdue' && !isOverdue(o)) return false;
   if(activeStageFilter === 'issue' && !isIssue) return false;
-  if(activeStageFilter && activeStageFilter !== 'issue'){
+  if(activeStageFilter && activeStageFilter !== 'issue' && activeStageFilter !== 'overdue'){
     if(isIssue) return false;
     const tile = DASHBOARD_TILES.find(t => t.key === activeStageFilter);
     if(tile && !tile.test(deriveMainProgress(o))) return false;
@@ -534,6 +544,28 @@ function dualTrackHtml(orderId, progress, prefix){
   return html;
 }
 
+function daysSinceOrdered(o){
+  if(!o.dateOrdered) return null;
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(o.dateOrdered) ? new Date(o.dateOrdered+'T00:00:00') : new Date(o.dateOrdered);
+  if(isNaN(d.getTime())) return null;
+  return Math.floor((Date.now() - d.getTime()) / 86400000);
+}
+
+function shipByLabel(o){
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(o.dateOrdered) ? new Date(o.dateOrdered+'T00:00:00') : new Date(o.dateOrdered);
+  if(isNaN(d.getTime())) return '';
+  d.setDate(d.getDate() + 5);
+  return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+}
+
+function isOverdue(o){
+  const isIssue = o.issue && o.issue.active;
+  const progress = isIssue ? deriveIssueProgress(o.issue) : deriveMainProgress(o);
+  if(!progress || progress.shipped) return false;
+  const days = daysSinceOrdered(o);
+  return days !== null && days > 5;
+}
+
 function orderCardHtml(o){
   const isIssue = o.issue && o.issue.active;
   const progress = isIssue ? deriveIssueProgress(o.issue) : deriveMainProgress(o);
@@ -573,6 +605,7 @@ function orderCardHtml(o){
       <span class="source-tag">${escapeHtml(o.source)}</span>
     </div>
     <div class="customer-name">${escapeHtml(o.customer)}</div>
+    ${isOverdue(o) ? `<div class="overdue-banner">⚠ OVERDUE — should have shipped by ${shipByLabel(o)}</div>` : ''}
     <div class="items">${itemsHtml}</div>
     ${!isIssue ? dualTrackHtml(o.id, progress, 'main') : ''}
     ${issueHtml}
