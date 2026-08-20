@@ -98,6 +98,16 @@
   .stepper-mini-labels{display:flex;gap:4px;margin-top:3px;}
   .stepper-mini-labels div{flex:1;text-align:center;font-size:9px;color:var(--ink-soft);line-height:1.25;white-space:normal;word-break:break-word;}
   .stepper-mini-labels div.active{font-weight:700;}
+  .dual-track{margin:10px 0 4px;}
+  .track-row{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+  .track-label{width:36px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;font-size:10px;letter-spacing:0.3px;flex-shrink:0;}
+  .track-btn{border:1.5px solid var(--line);background:#fff;border-radius:20px;padding:4px 11px;font-size:11px;font-weight:600;cursor:pointer;color:var(--ink-soft);transition:all .12s ease;}
+  .track-btn:disabled{opacity:0.4;cursor:not-allowed;}
+  .track-btn.done.art{background:var(--s1);border-color:var(--s1);color:#fff;}
+  .track-btn.done.blank{background:var(--s2);border-color:var(--s2);color:#fff;}
+  .mark-shipped-btn{margin-top:2px;margin-bottom:4px;}
+  .shipped-badge{display:inline-flex;align-items:center;gap:5px;color:var(--s4);font-weight:700;font-size:12.5px;margin:6px 0 4px;}
+  .needs-badge{display:inline-block;font-size:10.5px;font-weight:700;color:var(--issue);background:var(--issue-soft);border-radius:6px;padding:1px 7px;margin-left:6px;}
   .card-bottom{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px;}
   .meta-line{font-size:12px;color:var(--ink-soft);display:flex;gap:10px;flex-wrap:wrap;}
   .assignee{display:inline-flex;align-items:center;gap:4px;font-weight:700;font-size:11px;padding:2px 8px;border-radius:20px;background:#EEF1F6;color:var(--navy);}
@@ -274,14 +284,14 @@ if(document.readyState === 'loading'){
           </div>
         </div>
         <div class="field">
-          <label>Status</label>
-          <select id="f_status">
-            <option value="0">Order Received</option>
-            <option value="1">Art Ordered</option>
-            <option value="2">Blank Ordered</option>
-            <option value="3">Art &amp; Blank Received</option>
-            <option value="4">Pressed, Packed &amp; Shipped</option>
-          </select>
+          <label>Progress</label>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;">
+            <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" id="f_artOrdered"> Art Ordered</label>
+            <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" id="f_artReceived"> Art Received</label>
+            <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" id="f_blankOrdered"> Blank Ordered</label>
+            <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" id="f_blankReceived"> Blank Received</label>
+            <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" id="f_shipped"> Shipped</label>
+          </div>
         </div>
         <div class="field">
           <label>Notes</label>
@@ -324,7 +334,7 @@ if(document.readyState === 'loading'){
   <div class="modal-overlay" id="reportModalOverlay">
     <div class="modal" style="max-width:680px;">
       <h2>Blanks Report</h2>
-      <div class="report-summary">Totals from orders in "Order Received", "Art Ordered", or "Needs Reorder" — anything that still needs its blank ordered.</div>
+      <div class="report-summary">Totals for every order where the blank hasn't been ordered yet — regardless of art status.</div>
       <div id="reportTableWrap"></div>
       <div class="report-actions">
         <button type="button" class="btn btn-ghost btn-sm" id="copyReportBtn">Copy to clipboard</button>
@@ -338,12 +348,22 @@ if(document.readyState === 'loading'){
 <script>
 function initApp(){
 
-const STAGES = ['Order Received','Art Ordered','Blank Ordered','Art & Blank Received','Pressed, Packed & Shipped'];
-const STAGE_SHORT = ['Received','Art','Blank','Art+Blank Received','Shipped'];
-const STAGE_COLORS = ['var(--s0)','var(--s1)','var(--s2)','var(--s3)','var(--s4)'];
-const ISSUE_STAGES = ['Art Ordered','Blank Ordered','Art & Blank Received','Re-Shipped'];
-const ISSUE_STAGES_SHORT = ['Art','Blank','Art+Blank Received','Shipped'];
 const DEFAULT_CLIENTS = ['NP Steelers','SFV Chargers'];
+const DASHBOARD_TILES = [
+  { key: 'needsArt', label: 'Needs Art Ordered', color: 'var(--s1)', test: p => !p.artOrdered && !p.shipped },
+  { key: 'needsBlank', label: 'Needs Blank Ordered', color: 'var(--s2)', test: p => !p.blankOrdered && !p.shipped },
+  { key: 'artAwaitingReceipt', label: 'Art Awaiting Receipt', color: 'var(--s1)', test: p => p.artOrdered && !p.artReceived && !p.shipped },
+  { key: 'blankAwaitingReceipt', label: 'Blank Awaiting Receipt', color: 'var(--s2)', test: p => p.blankOrdered && !p.blankReceived && !p.shipped },
+  { key: 'readyToPress', label: 'Ready to Press', color: 'var(--s3)', test: p => p.artReceived && p.blankReceived && !p.shipped },
+  { key: 'shipped', label: 'Pressed, Packed & Shipped', color: 'var(--s4)', test: p => p.shipped }
+];
+const BULK_ACTIONS = [
+  { value: 'artOrdered', label: 'Mark Art Ordered' },
+  { value: 'artReceived', label: 'Mark Art Received' },
+  { value: 'blankOrdered', label: 'Mark Blank Ordered' },
+  { value: 'blankReceived', label: 'Mark Blank Received' },
+  { value: 'shipped', label: 'Mark Pressed, Packed & Shipped' }
+];
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
@@ -399,11 +419,13 @@ async function ensureClient(name){
 }
 
 function computeCounts(){
-  const counts = [0,0,0,0,0];
+  const counts = {};
+  DASHBOARD_TILES.forEach(t => counts[t.key] = 0);
   let issueCount = 0;
   orders.forEach(o => {
-    if(o.issue && o.issue.active) issueCount++;
-    else counts[o.status]++;
+    if(o.issue && o.issue.active){ issueCount++; return; }
+    const p = deriveMainProgress(o);
+    DASHBOARD_TILES.forEach(t => { if(t.test(p)) counts[t.key]++; });
   });
   return {counts, issueCount};
 }
@@ -412,12 +434,12 @@ function renderDashboard(){
   const {counts, issueCount} = computeCounts();
   const dash = $('dashboard');
   let html = '';
-  STAGES.forEach((label, i) => {
-    const active = activeStageFilter === i ? 'active' : '';
-    html += `<button class="stage-chip ${active}" data-stage="${i}">
-      <span class="dot" style="background:${STAGE_COLORS[i]}"></span>
-      <div class="count">${counts[i]}</div>
-      <div class="label">${label}</div>
+  DASHBOARD_TILES.forEach(t => {
+    const active = activeStageFilter === t.key ? 'active' : '';
+    html += `<button class="stage-chip ${active}" data-stage="${t.key}">
+      <span class="dot" style="background:${t.color}"></span>
+      <div class="count">${counts[t.key]}</div>
+      <div class="label">${t.label}</div>
     </button>`;
   });
   const issueActive = activeStageFilter === 'issue' ? 'active' : '';
@@ -429,7 +451,7 @@ function renderDashboard(){
   dash.innerHTML = html;
   dash.querySelectorAll('.stage-chip').forEach(btn => {
     btn.addEventListener('click', () => {
-      const val = btn.dataset.stage === 'issue' ? 'issue' : Number(btn.dataset.stage);
+      const val = btn.dataset.stage;
       activeStageFilter = (activeStageFilter === val) ? null : val;
       render();
     });
@@ -440,8 +462,13 @@ function matchesFilters(o){
   const search = $('searchBox').value.trim().toLowerCase();
   const clientF = $('clientFilter').value;
   const assigneeF = $('assigneeFilter').value;
-  if(activeStageFilter === 'issue' && !(o.issue && o.issue.active)) return false;
-  if(typeof activeStageFilter === 'number' && (o.status !== activeStageFilter || (o.issue && o.issue.active))) return false;
+  const isIssue = o.issue && o.issue.active;
+  if(activeStageFilter === 'issue' && !isIssue) return false;
+  if(activeStageFilter && activeStageFilter !== 'issue'){
+    if(isIssue) return false;
+    const tile = DASHBOARD_TILES.find(t => t.key === activeStageFilter);
+    if(tile && !tile.test(deriveMainProgress(o))) return false;
+  }
   if(clientF && o.client !== clientF) return false;
   if(assigneeF && o.assignedTo !== assigneeF) return false;
   if(search){
@@ -458,9 +485,64 @@ function formatOrderDate(d){
   return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
 }
 
+function deriveMainProgress(o){
+  if(o.artOrdered !== undefined || o.blankOrdered !== undefined || o.artReceived !== undefined || o.blankReceived !== undefined || o.shipped !== undefined){
+    return {
+      artOrdered: !!o.artOrdered, artReceived: !!o.artReceived,
+      blankOrdered: !!o.blankOrdered, blankReceived: !!o.blankReceived,
+      shipped: !!o.shipped
+    };
+  }
+  const s = o.status || 0;
+  return { artOrdered: s>=1, blankOrdered: s>=2, artReceived: s>=3, blankReceived: s>=3, shipped: s>=4 };
+}
+
+function deriveIssueProgress(issue){
+  if(!issue) return null;
+  if(issue.artOrdered !== undefined || issue.blankOrdered !== undefined || issue.artReceived !== undefined || issue.blankReceived !== undefined || issue.shipped !== undefined){
+    return {
+      artOrdered: !!issue.artOrdered, artReceived: !!issue.artReceived,
+      blankOrdered: !!issue.blankOrdered, blankReceived: !!issue.blankReceived,
+      shipped: !!issue.shipped
+    };
+  }
+  const s = issue.status || 0;
+  return { artOrdered: s>=1, blankOrdered: s>=2, artReceived: s>=3, blankReceived: s>=3, shipped: s>=3 };
+}
+
+function dualTrackHtml(orderId, progress, prefix){
+  const artBtn2 = progress.artOrdered ? '' : 'disabled';
+  const blankBtn2 = progress.blankOrdered ? '' : 'disabled';
+  const readyToShip = progress.artReceived && progress.blankReceived;
+  let html = `<div class="dual-track">
+    <div class="track-row">
+      <span class="track-label">Art</span>
+      <button type="button" class="track-btn ${progress.artOrdered?'done art':''}" data-order="${orderId}" data-prefix="${prefix}" data-field="artOrdered" data-value="${!progress.artOrdered}">Ordered</button>
+      <button type="button" class="track-btn ${progress.artReceived?'done art':''}" data-order="${orderId}" data-prefix="${prefix}" data-field="artReceived" data-value="${!progress.artReceived}" ${artBtn2}>Received</button>
+    </div>
+    <div class="track-row">
+      <span class="track-label">Blank</span>
+      <button type="button" class="track-btn ${progress.blankOrdered?'done blank':''}" data-order="${orderId}" data-prefix="${prefix}" data-field="blankOrdered" data-value="${!progress.blankOrdered}">Ordered</button>
+      <button type="button" class="track-btn ${progress.blankReceived?'done blank':''}" data-order="${orderId}" data-prefix="${prefix}" data-field="blankReceived" data-value="${!progress.blankReceived}" ${blankBtn2}>Received</button>
+    </div>
+  </div>`;
+  if(progress.shipped){
+    html += `<div class="shipped-badge">✓ ${prefix==='issue'?'Re-Shipped':'Pressed, Packed & Shipped'}</div>`;
+  } else if(readyToShip){
+    html += `<button type="button" class="btn btn-primary btn-sm mark-shipped-btn" data-order="${orderId}" data-prefix="${prefix}" data-field="shipped" data-value="true">Mark ${prefix==='issue'?'Re-Shipped':'Pressed, Packed & Shipped'}</button>`;
+  }
+  return html;
+}
+
 function orderCardHtml(o){
   const isIssue = o.issue && o.issue.active;
-  const borderColor = isIssue ? 'var(--issue)' : STAGE_COLORS[o.status];
+  const progress = isIssue ? deriveIssueProgress(o.issue) : deriveMainProgress(o);
+  let borderColor = 'var(--s0)';
+  if(isIssue){ borderColor = 'var(--issue)'; }
+  else if(progress.shipped){ borderColor = 'var(--s4)'; }
+  else if(progress.artReceived && progress.blankReceived){ borderColor = 'var(--s3)'; }
+  else if(progress.artOrdered || progress.blankOrdered){ borderColor = 'var(--s1)'; }
+
   const itemsHtml = (o.items||[]).map(it => `
     <div class="item-row">
       ${it.part ? `<span class="part-tag">#${escapeHtml(it.part)}</span>` : ''}
@@ -468,43 +550,31 @@ function orderCardHtml(o){
       <span class="item-meta">${it.size ? escapeHtml(it.size) + ' &middot; ' : ''}${it.color ? escapeHtml(it.color) + ' &middot; ' : ''}Qty ${it.qty || 1}</span>
     </div>`).join('');
 
-  let stepperHtml = '';
-  if(!isIssue){
-    stepperHtml = `<div class="stepper">` +
-      STAGES.map((s,i) => `<div class="step ${i<=o.status?'done':''}" style="--stepcolor:${STAGE_COLORS[o.status]}" data-order="${o.id}" data-step="${i}" title="${s}"></div>`).join('') +
-      `</div>
-      <div class="stepper-mini-labels">` +
-      STAGE_SHORT.map((s,i) => `<div class="${i===o.status?'active':''}" style="${i===o.status?'color:'+STAGE_COLORS[o.status]+';':''}">${s}</div>`).join('') +
-      `</div>
-      <div class="stepper-label">${STAGES[o.status]}</div>`;
+  let needsBadges = '';
+  if(!isIssue && !progress.shipped){
+    if(!progress.artOrdered) needsBadges += `<span class="needs-badge">Needs Art</span>`;
+    if(!progress.blankOrdered) needsBadges += `<span class="needs-badge">Needs Blank</span>`;
   }
 
   let issueHtml = '';
   if(isIssue){
-    const stepperIssue = `<div class="stepper">` +
-      ISSUE_STAGES.map((s,i) => `<div class="step ${i<=o.issue.status?'done':''}" style="--stepcolor:var(--issue)" data-order="${o.id}" data-step="${i}" data-issue-step="1" title="${s}"></div>`).join('') +
-      `</div>
-      <div class="stepper-mini-labels">` +
-      ISSUE_STAGES_SHORT.map((s,i) => `<div class="${i===o.issue.status?'active':''}" style="${i===o.issue.status?'color:var(--issue);':''}">${s}</div>`).join('') +
-      `</div>
-      <div class="stepper-label" style="color:var(--issue)">${ISSUE_STAGES[o.issue.status]}</div>`;
     issueHtml = `<div class="issue-banner">
       <div class="ib-title">Needs Reorder</div>
       <div class="ib-reason">${escapeHtml(o.issue.reason)}</div>
-      ${stepperIssue}
-      <div style="margin-top:8px;"><button class="btn btn-ghost btn-sm resolve-issue" data-order="${o.id}">Mark Resolved</button></div>
+      ${dualTrackHtml(o.id, progress, 'issue')}
+      <div style="margin-top:8px;"><button type="button" class="btn btn-ghost btn-sm resolve-issue" data-order="${o.id}">Mark Resolved</button></div>
     </div>`;
   }
 
   return `<div class="order-card ${isIssue?'issue-active':''} ${!isIssue?'has-checkbox':''} ${selectedIds.has(o.id)?'selected':''}" style="border-left-color:${borderColor}">
-    ${!isIssue ? `<input type="checkbox" class="order-checkbox" data-order="${o.id}" ${selectedIds.has(o.id)?'checked':''} title="Select for bulk status change">` : ''}
+    ${!isIssue ? `<input type="checkbox" class="order-checkbox" data-order="${o.id}" ${selectedIds.has(o.id)?'checked':''} title="Select for bulk action">` : ''}
     <div class="card-top">
-      <div><span class="order-id">#${escapeHtml(o.orderNum)}</span><span class="client-badge">${escapeHtml(o.client)}</span></div>
+      <div><span class="order-id">#${escapeHtml(o.orderNum)}</span><span class="client-badge">${escapeHtml(o.client)}</span>${needsBadges}</div>
       <span class="source-tag">${escapeHtml(o.source)}</span>
     </div>
     <div class="customer-name">${escapeHtml(o.customer)}</div>
     <div class="items">${itemsHtml}</div>
-    ${stepperHtml}
+    ${!isIssue ? dualTrackHtml(o.id, progress, 'main') : ''}
     ${issueHtml}
     ${o.notes ? `<div class="notes-line">${escapeHtml(o.notes)}</div>` : ''}
     <div class="card-bottom">
@@ -539,10 +609,10 @@ function render(){
   if(selectedIds.size > 0){
     topHtml += `<div class="bulk-bar">
       <span class="count">${selectedIds.size} selected</span>
-      <select id="bulkStatusSelect">
-        ${STAGES.map((s,i) => `<option value="${i}">${s}</option>`).join('')}
+      <select id="bulkActionSelect">
+        ${BULK_ACTIONS.map(a => `<option value="${a.value}">${a.label}</option>`).join('')}
       </select>
-      <button class="btn btn-primary btn-sm" id="bulkApplyBtn" style="background:#fff;color:var(--navy-deep);">Move selected</button>
+      <button class="btn btn-primary btn-sm" id="bulkApplyBtn" style="background:#fff;color:var(--navy-deep);">Apply to selected</button>
       <button class="btn btn-ghost btn-sm" id="bulkClearBtn">Clear selection</button>
     </div>`;
   }
@@ -583,13 +653,14 @@ function attachCardListeners(){
   const bulkApply = $('bulkApplyBtn');
   if(bulkApply){
     bulkApply.addEventListener('click', async () => {
-      const newStatus = Number($('bulkStatusSelect').value);
+      const field = $('bulkActionSelect').value;
+      const actionLabel = BULK_ACTIONS.find(a => a.value === field)?.label || field;
       const ids = [...selectedIds];
       if(ids.length === 0) return;
-      if(!confirm(`Move ${ids.length} order(s) to "${STAGES[newStatus]}"?`)) return;
+      if(!confirm(`${actionLabel} for ${ids.length} order(s)?`)) return;
       setSync('busy');
       try{
-        await Promise.all(ids.map(id => ordersRef.child(id).update({ status: newStatus })));
+        await Promise.all(ids.map(id => ordersRef.child(id).update({ [field]: true })));
         selectedIds.clear();
         setSync('ok');
       }catch(e){ setSync('error'); }
@@ -600,17 +671,17 @@ function attachCardListeners(){
   if(bulkClear){
     bulkClear.addEventListener('click', () => { selectedIds.clear(); render(); });
   }
-  document.querySelectorAll('.step').forEach(step => {
-    step.addEventListener('click', async () => {
-      const id = step.dataset.order;
-      const stepIdx = Number(step.dataset.step);
-      const isIssueStep = step.dataset.issueStep === '1';
-      const o = orders.find(x => x.id === id);
-      if(!o) return;
+  document.querySelectorAll('.track-btn, .mark-shipped-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if(btn.disabled) return;
+      const id = btn.dataset.order;
+      const prefix = btn.dataset.prefix;
+      const field = btn.dataset.field;
+      const value = btn.dataset.value === 'true';
       setSync('busy');
       try{
-        if(isIssueStep){ await ordersRef.child(id).child('issue').update({ status: stepIdx }); }
-        else { await ordersRef.child(id).update({ status: stepIdx }); }
+        if(prefix === 'issue'){ await ordersRef.child(id).child('issue').update({ [field]: value }); }
+        else { await ordersRef.child(id).update({ [field]: value }); }
       }catch(e){ setSync('error'); }
     });
   });
@@ -687,7 +758,12 @@ function openOrderModal(orderId){
     $('f_customer').value = o.customer;
     $('f_date').value = o.dateOrdered || '';
     $('f_assignee').value = o.assignedTo;
-    $('f_status').value = o.status;
+    const p = deriveMainProgress(o);
+    $('f_artOrdered').checked = p.artOrdered;
+    $('f_artReceived').checked = p.artReceived;
+    $('f_blankOrdered').checked = p.blankOrdered;
+    $('f_blankReceived').checked = p.blankReceived;
+    $('f_shipped').checked = p.shipped;
     $('f_notes').value = o.notes || '';
     (o.items && o.items.length ? o.items : [{}]).forEach(addItemRow);
   } else {
@@ -714,7 +790,8 @@ function computeBlanksReport(){
   const emptyOrders = [];
   orders.forEach(o => {
     const isIssue = o.issue && o.issue.active;
-    const inScope = isIssue || o.status === 0 || o.status === 1;
+    const p = isIssue ? deriveIssueProgress(o.issue) : deriveMainProgress(o);
+    const inScope = !p.blankOrdered;
     if(!inScope) return;
     const items = o.items || [];
     const hasRealItems = items.some(it => (it.desc || '').trim() || (it.part || '').trim());
@@ -770,7 +847,7 @@ function renderReportModal(){
     warningHtml = `<div class="report-warning">⚠ ${emptyOrders.length} order(s) in scope have no item data and are NOT counted below: ${list}. Check these manually before ordering.</div>`;
   }
   if(rows.length === 0){
-    wrap.innerHTML = warningHtml + `<div class="report-empty">Nothing to order right now — no items in "Order Received", "Art Ordered", or "Needs Reorder".</div>`;
+    wrap.innerHTML = warningHtml + `<div class="report-empty">Nothing to order right now — every order already has its blank ordered.</div>`;
     return;
   }
   wrap.innerHTML = warningHtml + `<table class="report-table">
@@ -844,7 +921,11 @@ $('orderForm').addEventListener('submit', async (e) => {
     items: collectItems(),
     dateOrdered: $('f_date').value,
     assignedTo: $('f_assignee').value,
-    status: Number($('f_status').value),
+    artOrdered: $('f_artOrdered').checked,
+    artReceived: $('f_artReceived').checked,
+    blankOrdered: $('f_blankOrdered').checked,
+    blankReceived: $('f_blankReceived').checked,
+    shipped: $('f_shipped').checked,
     notes: $('f_notes').value.trim()
   };
   setSync('busy');
