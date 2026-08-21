@@ -378,8 +378,8 @@ const DEFAULT_CLIENTS = ['NP Steelers','SFV Chargers'];
 const DASHBOARD_TILES = [
   { key: 'needsArt', label: 'Needs Art Ordered', color: 'var(--s1)', test: p => !p.artOrdered && !p.shipped },
   { key: 'needsBlank', label: 'Needs Blank Ordered', color: 'var(--s2)', test: p => !p.blankOrdered && !p.shipped },
-  { key: 'artAwaitingReceipt', label: 'Art Awaiting Receipt', color: 'var(--s1)', test: p => p.artOrdered && !p.artReceived && !p.shipped },
-  { key: 'blankAwaitingReceipt', label: 'Blank Awaiting Receipt', color: 'var(--s2)', test: p => p.blankOrdered && !p.blankReceived && !p.shipped },
+  { key: 'artAwaitingReceipt', label: 'Art Pending', color: 'var(--s1)', test: p => p.artOrdered && !p.artReceived && !p.shipped },
+  { key: 'blankAwaitingReceipt', label: 'Blank Pending', color: 'var(--s2)', test: p => p.blankOrdered && !p.blankReceived && !p.shipped },
   { key: 'readyToPress', label: 'Ready to Press', color: 'var(--s3)', test: p => p.artReceived && p.blankReceived && !p.shipped },
   { key: 'shipped', label: 'Pressed, Packed & Shipped', color: 'var(--s4)', test: p => p.shipped }
 ];
